@@ -1,7 +1,7 @@
 {
   "name": "meter",
-  "version": "0.2.0",
-  "description": "Context, rate limits and cache hits above the prompt; /tokens charts token usage by day, repo, branch and model.",
+  "version": "0.3.0",
+  "description": "Memory, plan and weekly limits as bars above the prompt; /tokens charts token usage by day, repo, branch and model.",
   "author": {
     "name": "Dominick Giordano"
   }

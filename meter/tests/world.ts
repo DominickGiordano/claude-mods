@@ -19,7 +19,7 @@ export function usageAt(percent: number, now = 0): SessionUsage {
     context: { tokens: percent * 2000, window: 200_000, percent },
     rateLimits: [
       { kind: 'five_hour', percentUsed: 55, resetsAt: new Date(now + HOUR + 12 * 60_000).toISOString() },
-      { kind: 'seven_day', percentUsed: 26, resetsAt: new Date(now + 90 * HOUR).toISOString() },
+      { kind: 'seven_day', percentUsed: 26, resetsAt: new Date(now + 84 * HOUR).toISOString() },
     ],
   }
 }
