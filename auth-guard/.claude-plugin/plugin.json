@@ -1,8 +1,18 @@
 {
   "name": "auth-guard",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Spots an expired CLI login in tool output and offers a Login button that signs in and retries.",
   "author": {
     "name": "Dominick Giordano"
+  },
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "preflight": {
+      "type": "string",
+      "multiple": true,
+      "title": "Preflight providers",
+      "description": "Providers to check at session start (aws, gcloud, gh, infisical). An expired one gets a band row with a Log in button.",
+      "default": []
+    }
   }
 }
