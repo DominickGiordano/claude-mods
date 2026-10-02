@@ -15,7 +15,7 @@
     {
       "name": "meter",
       "source": "./meter",
-      "description": "Context, rate limits, cost and cache hits above the prompt; /spend charts token spend by day, repo and branch."
+      "description": "Context, rate limits and cache hits above the prompt; /tokens charts token usage by day, repo, branch and model."
     },
     {
       "name": "fleet",
