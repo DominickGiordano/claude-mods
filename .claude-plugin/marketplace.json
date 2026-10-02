@@ -31,6 +31,11 @@
       "name": "auth-guard",
       "source": "./auth-guard",
       "description": "Spots an expired CLI login in tool output and offers a Login button that signs in and retries."
+    },
+    {
+      "name": "handoff",
+      "source": "./handoff",
+      "description": "A checklist of the shell commands Claude hands you to run: captured from replies, ticked when you run them, confirmed by Claude."
     }
   ]
 }

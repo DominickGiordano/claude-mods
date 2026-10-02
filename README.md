@@ -10,6 +10,7 @@ that run inside Claude Code. These need Claude Code 2.1.287 or later.
 | `fleet` | `/fleet` lists every live session on this machine; `/send` messages one. |
 | `quick` | Commands that run with no Claude turn: `/k`, `/also`, `/links`, `/copy`, `/status`. |
 | `auth-guard` | Spots an expired CLI login in tool output; a Login button signs in and retries. |
+| `handoff` | Checklist of the shell commands Claude asks you to run. Ticks them off when you run them with `!`, and when Claude confirms they worked. |
 
 ## Install
 
