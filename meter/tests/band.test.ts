@@ -88,21 +88,20 @@ describe('band', () => {
 })
 
 describe('spinner', () => {
-  test('appends elapsed time and this turn’s input+output tokens', async ($, on) => {
+  test('appends this turn’s input+output tokens, labelled apart from the engine’s count', async ($, on) => {
     const w = world(on)
     w.steps = [stepUsage(1000, 50_000, 0, 1200), stepUsage(500, 60_000, 0, 1500)]
     await start($)
     await $.turn.start({ text: 'go', turnId: 't1' })
     await step($)
     await step($)
-    await w.clock.advance(12_400)
     const ui = await $.ui.mount({
       plugin: 'meter',
       surface: 'terminal',
       component: 'Spinner',
       props: { word: 'Sauteing', message: null, suffix: '…', mode: 'responding' },
     })
-    expect((await ui.find({ type: 'Text' }))?.text).toBe('Sauteing… · 12s · 4.2k tok')
+    expect((await ui.find({ type: 'Text' }))?.text).toBe('Sauteing… · 4.2k in+out')
 
     await complete($)
     await ui.redraw()

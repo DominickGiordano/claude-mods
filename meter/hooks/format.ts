@@ -36,11 +36,6 @@ export function until(iso: string | undefined, now: number): string {
   return h > 0 ? `${h}h${minutes % 60}m` : `${minutes}m`
 }
 
-export function elapsed(ms: number): string {
-  const s = Math.floor(ms / 1000)
-  return s >= 60 ? `${Math.floor(s / 60)}m${s % 60}s` : `${s}s`
-}
-
 export function requestTokens(u: ModelUsage): number {
   return u.input_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens + u.output_tokens
 }

@@ -1,6 +1,6 @@
-import type { EngineInterface, On, RenderElement, SessionUsage, Timer, TurnUsage } from 'claude-code'
+import type { EngineInterface, On, RenderElement, SessionUsage, TurnUsage } from 'claude-code'
 
-import { cachePercent, elapsed, gauge, levelColor, requestTokens, short, sparkline, until, usd } from './format'
+import { cachePercent, gauge, levelColor, requestTokens, short, sparkline, until, usd } from './format'
 import type { CacheTotals } from './format'
 import { barRows, rasterCells } from './chart'
 import { KEEP_DAYS, addTo, dayOf, isExpired, keyOf, merge, top, total } from './ledger'
@@ -17,8 +17,7 @@ let usage: SessionUsage | null = null
 let isStale = false
 let perRequest: number[] = []
 const cache: CacheTotals = { read: 0, written: 0, uncached: 0 }
-const turn = { isRunning: false, startedAt: 0, tokens: 0 }
-let ticker: Timer | null = null
+const turn = { isRunning: false, tokens: 0 }
 let mainTurnId = ''
 let lastUsd = 0
 const git = { turnId: '', branch: '' }
@@ -49,11 +48,7 @@ export function register(on: On) {
     if (!usage) await seed($)
     turn.isRunning = true
     mainTurnId = e.turnId
-    turn.startedAt = await $.clock.now()
     turn.tokens = 0
-    ticker?.cancel()
-    // The spinner's props don't change every second, so nothing redraws the elapsed time unasked.
-    ticker = $.clock.every(1000, () => $.ui.invalidate('ui.render'))
     return next(e)
   })
 
@@ -74,8 +69,6 @@ export function register(on: On) {
     const result = await next(e)
     if (!e.agentId) {
       turn.isRunning = false
-      ticker?.cancel()
-      ticker = null
     }
     await refresh($)
     if (e.usage) await record($, e.usage)
@@ -84,8 +77,7 @@ export function register(on: On) {
 
   on('ui.render', { component: 'Spinner' }, async ($, e, next) => {
     if (!turn.isRunning) return next(e)
-    const now = await $.clock.now()
-    const suffix = `${e.props.suffix} · ${elapsed(now - turn.startedAt)} · ${short(turn.tokens)} tok`
+    const suffix = `${e.props.suffix} · ${short(turn.tokens)} in+out`
     return next({ ...e, props: { ...e.props, suffix } })
   })
 

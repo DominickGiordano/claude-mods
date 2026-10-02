@@ -11,7 +11,7 @@ ctx ▇▇▇▁▁ 61% 122k/200k · 5h 55% ↻1h12m · 7d 26% · $3.41 · cache
 - Cache is cache reads over all input tokens, summed over every model request this session,
   subagents included. The sparkline is tokens per request, last 16.
 - Under 100 columns the row drops to `ctx 61% · 5h 55% · $3.41`.
-- The spinner gains `· 12s · 4.2k tok`: time and input+output tokens this turn.
+- The spinner gains `· 4.2k in+out`: uncached input plus output tokens this turn.
 
 Figures come from `$.session.usage()`, the status line's numbers. If a read fails, the row says
 the figures are stale rather than showing them as current.
