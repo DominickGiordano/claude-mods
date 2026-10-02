@@ -1,0 +1,8 @@
+{
+  "name": "handoff",
+  "version": "0.1.0",
+  "description": "A checklist of the shell commands Claude hands you to run: captured from replies, ticked when you run them, confirmed by Claude.",
+  "author": {
+    "name": "Dominick Giordano"
+  }
+}
