@@ -6,9 +6,9 @@ that run inside Claude Code. These need Claude Code 2.1.287 or later.
 | Mod | What it does |
 |---|---|
 | `pr-watch` | Band row per PR Claude opened: CI, conflicts, merged. Merge buttons, and a nudge when one merges. |
-| `meter` | Context %, 5h/weekly limits, cost and cache hits above the prompt. `/usage` charts spend by day, repo and branch. |
+| `meter` | Context %, 5h/weekly limits, cost and cache hits above the prompt. `/spend` charts spend by day, repo and branch. |
 | `fleet` | `/fleet` lists every live session on this machine; `/send` messages one. |
-| `quick` | Commands that run with no Claude turn: `/k`, `/also`, `/links`, `/copy`, `/status`. |
+| `quick` | Commands that run with no Claude turn: `/k` (keep going), `/links`, `/yank` (copy a code block), `/now`. |
 | `auth-guard` | Spots an expired CLI login in tool output; a Login button signs in and retries. |
 
 ## Install
