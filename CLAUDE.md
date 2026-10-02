@@ -7,7 +7,7 @@ Branch flow: feature branch off `develop`, PR into `develop`. Never target `main
 
 ## Rules every mod follows
 
-- **TypeScript**, `hooks/register.ts`, tests in `tests/*.test.ts` with `claude-code/testing`.
+- **TypeScript**, `hooks/register.ts` (`.tsx` when it draws with JSX), tests in `tests/*.test.ts(x)` with `claude-code/testing`.
   Stub every `$` call a test triggers with `on('<event>', ...)`; unanswered calls throw.
 - **Static analysis:** literal event names, full `$.ns.method()` calls, never alias or
   destructure `$`. Helpers that take `$` are top-level functions in the same file.
