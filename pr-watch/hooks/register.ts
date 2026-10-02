@@ -14,7 +14,7 @@ const CHECKS_GRACE_MS = 3 * MINUTE
 const VIEWS_AT_ONCE = 4
 const FIELDS = 'number,title,state,isDraft,mergeable,mergeStateStatus,statusCheckRollup,baseRefName,headRefName,headRefOid,url'
 // Heads that are promotions or release lines: merging those ships somewhere, so it stays manual.
-const LONG_LIVED = /^(develop|main|master|staging|production|release.*)$/
+const LONG_LIVED = /^(develop|main|master|staging|production|release.*)$/i
 const FAILED = ['FAILURE', 'ERROR', 'STALE', 'ACTION_REQUIRED', 'TIMED_OUT', 'CANCELLED', 'STARTUP_FAILURE']
 // UNSTABLE means a non-required check failed or is pending; auto waits for a fully clean state.
 const AUTO_STATES = ['CLEAN', 'HAS_HOOKS']
@@ -27,6 +27,8 @@ let kept: Pr[] = []
 let cleared = false
 let working = false
 let polling = false
+// PRs whose nudge was submitted and hasn't settled; `nudged` is set only once it has.
+const inFlight = new Set<string>()
 
 export const register: Register = (on, options) => {
   const config: Config = {
@@ -152,8 +154,9 @@ async function save($: Api, change: (list: Pr[]) => Pr[]) {
   kept = await update($, prs, change)
 }
 
+// Never writes `nudged`: callers pass whole views whose copy may be stale; the nudge owns it.
 async function patch($: Api, url: string, fields: Partial<Pr>) {
-  await save($, list => list.map(pr => (pr.url === url ? { ...pr, ...fields } : pr)))
+  await save($, list => list.map(pr => (pr.url === url ? { ...pr, ...fields, nudged: pr.nudged } : pr)))
 }
 
 async function track($: Api, url: string) {
@@ -162,7 +165,7 @@ async function track($: Api, url: string) {
   const fresh: Pr = { url, repo, number: Number(number), title: '', base: '', head: '', headOid: '', draft: false, state: '', mergeable: '', mergeState: '', checks: 'none', failed: [], error: null, trackedAt: now, doneAt: null, auto: false, autoFailed: null, nudged: false }
   await save($, list => (list.some(pr => pr.url === url) ? list : [...list, fresh]))
   const viewed = await view($, (await read($, prs)).find(pr => pr.url === url) ?? fresh, now)
-  await patch($, url, viewed)
+  await save($, list => list.map(pr => (pr.url === url ? viewed : pr)))
 }
 
 async function poll($: Api, config: Config) {
@@ -200,24 +203,26 @@ async function tick($: Api, config: Config) {
       await merge($, pr.url, config, true)
     }
   }
-  const merged = (await read($, prs)).filter(pr => pr.state === 'MERGED' && !pr.nudged)
-  if (config.nudge && !working && merged.length > 0) await nudge($, merged)
+  const merged = (await read($, prs)).filter(pr => pr.state === 'MERGED' && !pr.nudged && !inFlight.has(pr.url))
+  if (config.nudge && !working && merged.length > 0) nudge($, merged)
 }
 
-async function nudge($: Api, merged: Pr[]) {
+// Not awaited by the poll: submit resolves when the turn starts, and a poll held on it would stall.
+function nudge($: Api, merged: Pr[]) {
+  const urls = merged.map(pr => pr.url)
   const names = merged.map(pr => `#${pr.number} (${clean(pr.head)} → ${clean(pr.base)})`)
   const text = names.length === 1 ? `PR ${names[0]} merged.` : `PRs merged: ${names.join(', ')}.`
-  try {
-    const sent = await $.prompt.submit({ text })
-    if (sent.drop !== undefined) throw new Error(`dropped: ${sent.drop}`)
-  } catch (err) {
-    const why = err instanceof Error ? err.message : String(err)
+  const unsent = (why: string) => {
+    for (const url of urls) inFlight.delete(url)
     $.ui.log(`pr-watch: merge nudge not sent: ${why}`, { to: 'debug' })
     $.ui.toast(`pr-watch: couldn't tell Claude about the merge: ${why}`)
-    return
   }
-  const urls = merged.map(pr => pr.url)
-  await save($, list => list.map(pr => (urls.includes(pr.url) ? { ...pr, nudged: true } : pr)))
+  for (const url of urls) inFlight.add(url)
+  $.prompt.submit({ text }).then(async sent => {
+    if (sent.drop !== undefined) return unsent(`dropped: ${sent.drop}`)
+    await save($, list => list.map(pr => (urls.includes(pr.url) ? { ...pr, nudged: true } : pr)))
+    for (const url of urls) inFlight.delete(url)
+  }, err => unsent(err instanceof Error ? err.message : String(err)))
 }
 
 async function view($: Api, pr: Pr, now: number): Promise<Pr> {

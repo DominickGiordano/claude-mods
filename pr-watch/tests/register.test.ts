@@ -39,8 +39,9 @@ function world(on: On, view: View | string) {
     merge: ran(0, '', ''),
     afterMerge: null as View | null,
     slowMs: 0,
+    mergeSlowMs: 0,
     tool: { text: `Creating pull request for feature/x into develop\n\n${URL}\n`, isError: false },
-    submit: 'ok' as 'ok' | 'drop' | 'reject',
+    submit: 'ok' as 'ok' | 'drop' | 'reject' | 'hang',
   }
   const clock = mock.clock(on, { now: 100 * MINUTE })
   const runs: { argv: string[]; cwd?: string }[] = []
@@ -60,6 +61,7 @@ function world(on: On, view: View | string) {
   on('prompt.submit', ($, e) => {
     prompts.push(e.text)
     if (state.submit === 'reject') throw new Error('engine said no')
+    if (state.submit === 'hang') return new Promise<never>(() => {})
     return state.submit === 'drop' ? { drop: 'policy' } : { text: e.text }
   })
   on('tool.call', () => (state.tool.isError ? { isError: true, result: undefined, text: state.tool.text } : { result: { stdout: state.tool.text }, text: state.tool.text }))
@@ -67,6 +69,7 @@ function world(on: On, view: View | string) {
     runs.push({ argv: [...e.argv], cwd: e.init?.cwd })
     if (e.argv[2] === 'merge') {
       if (state.afterMerge) state.view = state.afterMerge
+      if (state.mergeSlowMs > 0) await clock.sleep(state.mergeSlowMs)
       return { value: state.merge }
     }
     if (state.slowMs > 0) await clock.sleep(state.slowMs)
@@ -338,6 +341,7 @@ describe('merge', () => {
     ['a release head into develop', { ...GREEN, headRefName: 'release/1.2' }, 'promotion: merge by hand'],
     ['a base outside mergeBases', { ...GREEN, baseRefName: 'release' }, 'base release not in mergeBases'],
     ['a draft', { ...GREEN, isDraft: true }, 'draft'],
+    ['a long-lived head in another case', { ...GREEN, headRefName: 'Release/2.0' }, 'promotion: merge by hand'],
   ]
   for (const [name, view, why] of blocked) {
     test(`no buttons for ${name}, the pane says why`, async ($, on) => {
@@ -488,6 +492,32 @@ describe('nudge', () => {
     await w.clock.advance(MINUTE)
     await w.clock.advance(MINUTE)
     expect(w.prompts).toHaveLength(2)
+  })
+
+  test('a submit that never settles blocks no poll and is not sent twice', async ($, on) => {
+    const w = world(on, GREEN)
+    await opened($)
+    w.state.submit = 'hang'
+    w.state.view = MERGED
+    await w.clock.advance(MINUTE)
+    for (let i = 0; i < 11; i++) await w.clock.advance(MINUTE)
+    expect(w.prompts).toEqual(['PR #12 (feature/x → develop) merged.'])
+    expect((await band($)).drawn, 'later polls ran and expired the merged PR').toBe('other mod')
+  })
+
+  test('a slow merge finishing after the nudge does not bring it back', async ($, on) => {
+    const w = world(on, GREEN)
+    await opened($)
+    w.state.afterMerge = MERGED
+    w.state.mergeSlowMs = 90_000
+    const pressed = press($, 'merge')
+    await w.clock.advance(MINUTE)
+    await w.clock.advance(MINUTE)
+    expect(w.prompts, 'the poll saw it merged while gh merge still ran').toHaveLength(1)
+    await w.clock.advance(MINUTE)
+    await pressed
+    await w.clock.advance(MINUTE)
+    expect(w.prompts).toHaveLength(1)
   })
 
   test('a rejected nudge is reported', async ($, on) => {
