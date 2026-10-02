@@ -1,8 +1,18 @@
 {
   "name": "pr-watch",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Watches the PRs Claude opens: a band row with CI and merge state, merge buttons, and a nudge when one merges.",
   "author": {
     "name": "Dominick Giordano"
+  },
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "nudge": {
+      "type": "boolean",
+      "title": "Nudge on merge",
+      "description": "When a watched PR merges and Claude is idle, send Claude one prompt saying so.",
+      "required": false,
+      "default": true
+    }
   }
 }
