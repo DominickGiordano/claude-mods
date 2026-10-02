@@ -29,27 +29,54 @@ export function stepUsage(input: number, read: number, written: number, output: 
   return { input_tokens: input, cache_read_input_tokens: read, cache_creation_input_tokens: written, output_tokens: output, model }
 }
 
-// The engine beneath the mod: usage, clock and the draw stubs a chained hook needs.
-export function world(on: On, now = 0) {
+// The engine beneath the mod: usage, clock, store, git and the draw stubs a chained hook needs.
+export function world(on: On, now = 0, stored: Record<string, unknown> = {}) {
   const w = {
+    store: new Map(Object.entries(stored)),
     usage: usageAt(61, now) as SessionUsage | null,
     steps: [] as TurnUsage[],
     compacts: 0,
+    branch: 'feature/1138',
+    repoRoot: '/work/claude-mods' as string | null,
+    gitRuns: 0,
+    opened: [] as string[],
     toasts: [] as string[],
     clock: mock.clock(on, { now }),
   }
+  // Own store stubs rather than mock.store: the test's engine has no $.store to read the ledger back with.
+  on('store.get', (_$, e) => ({ value: w.store.get(e.key) }))
+  on('store.set', (_$, e) => {
+    w.store.set(e.key, JSON.parse(JSON.stringify(e.value)))
+    return { value: undefined }
+  })
+  on('store.delete', (_$, e) => {
+    w.store.delete(e.key)
+    return { value: undefined }
+  })
+  on('store.keys', () => ({ value: [...w.store.keys()] }))
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
+  on('session.end', (_$, e) => ({ sessionId: e.sessionId }))
   on('session.usage', () => (w.usage ? { value: w.usage } : { deny: 'no reading' }))
   on('session.compact', () => {
     w.compacts++
     return { skip: 'stubbed' }
+  })
+  on('session.repo', () => ({ value: w.repoRoot ? { root: w.repoRoot, remote: null, internal: false, name: null } : null }))
+  on('session.root', () => ({ value: '/work/scratch' }))
+  on('process.run', () => {
+    w.gitRuns++
+    return { value: { exitCode: 0, stdout: `${w.branch}\n`, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+  on('command.register', (_$, e) => ({ value: { command: e.name } }))
+  on('ui.open', (_$, e) => {
+    w.opened.push(e.id)
+    return { value: { isPlaced: true as const } }
   })
   on('turn.start', (_$, e) => ({ turnId: e.turnId }))
   on('turn.step', async function* (_$, e) {
     return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn' as const, usage: w.steps.shift() ?? null }
   })
   on('turn.complete', (_$, e) => ({ text: e.answer }))
-  on('ui.invalidate', () => ({ value: undefined }))
   on('ui.toast', (_$, e) => {
     w.toasts.push(e.text)
     return { value: undefined }
