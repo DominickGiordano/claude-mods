@@ -136,7 +136,7 @@ describe('ledger', () => {
     w.usage = usageAt(40, NOW)
     await $.turn.start({ text: 'go', turnId: 't1' })
     const ui = await $.ui.mount({ plugin: 'meter', surface: 'terminal', component: 'AbovePrompt', props: BAND })
-    expect((await ui.findAll({ type: 'Text' })).map(t => t.text).join('')).toContain('ctx ▇▇▁▁▁ 40%')
+    expect((await ui.findAll({ type: 'Text' })).map(t => t.text).join('')).toContain('memory ████░░░░░░  40%')
   })
 
   test('after /clear the session cache resets', async ($, on) => {
@@ -146,7 +146,7 @@ describe('ledger', () => {
     await step($)
     await $.session.end({ reason: 'clear', sessionId: 's1', resume: { id: 's1' } })
     const { text } = await pane($)
-    expect(await text()).toContain("This session's cache hits: no requests yet")
+    expect(await text()).toContain('cache hits: no requests yet')
   })
 })
 
@@ -188,7 +188,7 @@ describe('/tokens', () => {
       expect(await text()).toContain('7d total 2.0k tok')
       expect(await text()).toContain('    2.0k tok  feature/1138 (app)')
       expect(await text()).not.toContain('main (api)')
-      expect(await text()).toContain("This session's cache hits: 90%")
+      expect(await text()).toContain('cache hits 90% (higher is better)')
       await ui.unmount()
     }
 

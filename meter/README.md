@@ -1,21 +1,30 @@
 # meter
 
-One row above the prompt:
+Above the prompt, one bar per limit:
 
 ```
-ctx ▇▇▇▁▁ 61% 122k/200k · 5h 55% ↻1h12m · 7d 26% · cache 92% · ▁▂▅▃▇ tok/req
+memory ████████░░ 78%  ⚠ clear soon  [Compact]
+plan   ███░░░░░░░ 31%  resets 2h 10m
+week   ██░░░░░░░░ 22%
 ```
 
-- Context, 5h and 7d figures go yellow at 50% and red at 80%. At 80% context an idle band shows
-  a **Compact** button (the same compaction `/compact` runs); mid-turn it says `ctx high`.
-- A limit window whose reset time has passed shows `5h reset?` until the next reading.
-  No context reading shows `ctx –`, never `0%`.
-- Cache is cache reads over all input tokens, summed over every model request this session,
-  subagents included. The sparkline is tokens per request, last 16.
-- Under 100 columns the row drops to `ctx 61% · 5h 55%`, plus 7d once it reaches 80%.
-- The spinner gains `· 4.2k in+out`: uncached input plus output tokens this turn.
+| Row | What it means | When to act |
+|---|---|---|
+| `memory` | How full this conversation's context window is. | 60%: clear (`/clear`) when you next switch tasks. 80%: clear or press **Compact** soon. |
+| `plan` | Your plan's 5-hour usage limit. `resets` says when it refills. | 90%: `⚠ near limit`, slow down or wait for the reset. |
+| `week` | Your plan's 7-day usage limit. Shows the reset day from 50%. | Near 100%, save heavy work for after the reset. |
+| cache hits | Not in the band. `/tokens` shows this session's cache hit rate. | Nothing to do. Higher is better. |
 
-"tok" everywhere else means everything a request read or wrote: input, output and cache.
+- Bars go yellow at 50% and red at 80%. They are 10 cells wide, fewer on a narrow terminal.
+- While memory is under 60% and plan and week under 50%, the band is one dim line:
+  `memory 41% · plan 31% · week 22%`. It opens to three rows when any crosses its threshold.
+- A figure Claude Code didn't report has no row, never `0%`. With an API key there are no plan
+  limits, so only `memory` shows. A limit whose reset time has passed shows `reset?` until the
+  next reading.
+- **Compact** runs the same compaction as `/compact`. Mid-turn the button hides.
+- The spinner gains `· 4.2k tokens`: uncached input plus output tokens this turn.
+
+"tok" in `/tokens` means everything a request read or wrote: input, output and cache.
 
 Figures are read once at start, then pushed by Claude Code's `session.measure` after each turn.
 meter never shows a dollar figure.
@@ -23,7 +32,8 @@ meter never shows a dollar figure.
 ## /tokens
 
 Opens a pane: tokens per day for the last 14 days, then the top repos, branches and models by
-tokens for 1, 7 or 30 days, and this session's cache-hit rate.
+tokens for 1, 7 or 30 days. The header shows this session's cache hits, the share of input
+tokens read from cache (higher is better).
 
 Every finished turn that reports usage, subagents' included, books its tokens into `$.store`
 under `meter:YYYY-MM-DD`, by repo (the main checkout's folder name), git branch and model. Days

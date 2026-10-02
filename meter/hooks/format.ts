@@ -1,7 +1,5 @@
 import type { ModelUsage } from 'claude-code'
 
-const SPARK = '▁▂▃▄▅▆▇█'
-
 export function short(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
   if (n >= 1_000) return `${(n / 1_000).toFixed(n >= 100_000 ? 0 : 1)}k`
@@ -14,25 +12,24 @@ export function levelColor(percent: number): string {
   return 'green'
 }
 
-export function gauge(percent: number, cells = 5): string {
-  const filled = Math.min(cells, Math.round((percent / 100) * cells))
-  return '▇'.repeat(filled) + '▁'.repeat(cells - filled)
-}
+const PARTIAL = ' ▏▎▍▌▋▊▉'
 
-// Scaled to the largest value shown, so the shape reads at any magnitude.
-export function sparkline(values: readonly number[]): string {
-  const top = Math.max(...values, 1)
-  return values.map(v => SPARK[Math.min(SPARK.length - 1, Math.floor((v / top) * (SPARK.length - 1)))]).join('')
+// The filled run, ending in an eighth-cell partial, and the track after it.
+export function bar(percent: number, cells: number): [string, string] {
+  const eighths = Math.round((Math.min(100, Math.max(0, percent)) / 100) * cells * 8)
+  const full = Math.floor(eighths / 8)
+  const part = eighths % 8
+  return ['█'.repeat(full) + (part ? PARTIAL[part] : ''), '░'.repeat(cells - full - (part ? 1 : 0))]
 }
 
 export function until(at: number, now: number): string {
   const minutes = Math.max(0, Math.round((at - now) / 60_000))
   const h = Math.floor(minutes / 60)
-  return h > 0 ? `${h}h${minutes % 60}m` : `${minutes}m`
+  return h > 0 ? `${h}h ${minutes % 60}m` : `${minutes}m`
 }
 
-// The one meaning of "tok" in the band and the ledger: everything the request read or wrote,
-// cache reads included. The spinner's "in+out" is the other figure and says so.
+// The one meaning of "tok" in the ledger: everything the request read or wrote, cache reads
+// included. The spinner counts only uncached input plus output, the part a turn adds.
 export function totalTokens(u: ModelUsage): number {
   return u.input_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens + u.output_tokens
 }

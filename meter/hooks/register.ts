@@ -1,21 +1,24 @@
 import type { EngineInterface, On, RenderElement, SessionRateLimit, SessionUsage } from 'claude-code'
 
-import { barRows, cachePercent, gauge, levelColor, short, sparkline, totalTokens, until } from './format'
+import { bar, barRows, cachePercent, levelColor, short, totalTokens, until } from './format'
 import type { CacheTotals } from './format'
 import { KEEP_DAYS, addTo, dayOf, isDay, isExpired, keyOf, merge, top, total } from './ledger'
 import type { Bucket, Day, Entry } from './ledger'
 
-const SPARK_REQUESTS = 16
-const WIDE_COLUMNS = 100
+const MEMORY_WARN = 60
+const LIMIT_WARN = 50
+const BAR_CELLS = 10
+const MIN_BAR_CELLS = 4
+const DAY = 86_400_000
 const CHART_DAYS = 14
 const CHART_ROWS = 6
 const TOP = 5
 const RANGES = [1, 7, 30] as const
 
 type Figures = Pick<SessionUsage, 'context' | 'rateLimits'>
+type Limit = { percent: number; resetAt: number | null; isPast: boolean }
 
 let figures: Figures | null = null
-let perRequest: number[] = []
 const cache: CacheTotals = { read: 0, written: 0, uncached: 0 }
 const turn = { isRunning: false, tokens: 0 }
 let mainTurnId = ''
@@ -42,7 +45,6 @@ export function register(on: On) {
   // session.start doesn't fire again after /clear or /resume, so the next turn.start re-seeds.
   on('session.end', { reason: ['clear', 'resume'] }, async ($, e, next) => {
     figures = null
-    perRequest = []
     cache.read = cache.written = cache.uncached = 0
     return next(e)
   })
@@ -59,7 +61,6 @@ export function register(on: On) {
     const result = yield* next(e)
     const u = result.usage
     if (!u) return result
-    perRequest = [...perRequest, totalTokens(u)].slice(-SPARK_REQUESTS)
     cache.read += u.cache_read_input_tokens
     cache.written += u.cache_creation_input_tokens
     cache.uncached += u.input_tokens
@@ -83,55 +84,69 @@ export function register(on: On) {
 
   on('ui.render', { component: 'Spinner' }, async ($, e, next) => {
     if (!turn.isRunning) return next(e)
-    const suffix = `${e.props.suffix} · ${short(turn.tokens)} in+out`
+    const suffix = `${e.props.suffix} · ${short(turn.tokens)} tokens`
     return next({ ...e, props: { ...e.props, suffix } })
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey || !figures) return next(e)
-    const { Box, Text, Button } = $.ui.resolve(e)
     const now = await $.clock.now()
-    const wide = e.props.bodyColumns >= WIDE_COLUMNS
-    const sep = () => Text({ dimColor: true, children: ' · ' })
-    const limit = (label: string, l: SessionRateLimit, showReset: boolean) => {
-      const resetAt = Date.parse(l.resetsAt ?? '')
-      if (resetAt <= now) return Text({ dimColor: true, children: `${label} reset?` })
-      const reset = showReset && Number.isFinite(resetAt) ? ` ↻${until(resetAt, now)}` : ''
-      return Text({ color: levelColor(l.percentUsed), children: `${label} ${Math.round(l.percentUsed)}%${reset}` })
+    const memory = figures.context.percent
+    const plan = limitOf(figures.rateLimits, 'five_hour', now)
+    const week = limitOf(figures.rateLimits, 'seven_day', now)
+    if (memory === undefined && !plan && !week) return next(e)
+    const { Box, Text, Button } = $.ui.resolve(e)
+
+    if ((memory ?? 0) < MEMORY_WARN && isCalm(plan) && isCalm(week)) {
+      const figure = (label: string, l: Limit | null) => (l ? [`${label} ${l.isPast ? 'reset?' : `${l.percent}%`}`] : [])
+      const line = [...(memory === undefined ? [] : [`memory ${memory}%`]), ...figure('plan', plan), ...figure('week', week)]
+      return Box({ flexDirection: 'column', children: [Text({ dimColor: true, children: line.join(' · ') }), await next(e)] })
     }
 
-    const { context, rateLimits } = figures
-    const ctx = context.percent
-    const parts: RenderElement[] = [
-      ctx === undefined
-        ? Text({ dimColor: true, children: 'ctx –' })
-        : Text({
-            color: levelColor(ctx),
-            children: wide ? `ctx ${gauge(ctx)} ${ctx}% ${short(context.tokens ?? 0)}/${short(context.window)}` : `ctx ${ctx}%`,
-          }),
-    ]
-    const five = rateLimits.find(l => l.kind === 'five_hour' && Number.isFinite(l.percentUsed))
-    if (five) parts.push(sep(), limit('5h', five, wide))
-    const seven = rateLimits.find(l => l.kind === 'seven_day' && Number.isFinite(l.percentUsed))
-    if (seven && (wide || seven.percentUsed >= 80)) parts.push(sep(), limit('7d', seven, false))
+    const cells = Math.min(BAR_CELLS, Math.max(MIN_BAR_CELLS, e.props.bodyColumns - 50))
+    const dim = (text: string) => Text({ dimColor: true, children: text })
+    const label = (name: string) => dim(name.padEnd(7))
+    const row = (name: string, percent: number, hints: RenderElement[]) => {
+      const color = levelColor(percent)
+      const [fill, track] = bar(percent, cells)
+      return Box({
+        flexDirection: 'row',
+        children: [
+          label(name),
+          ...(fill ? [Text({ color, children: fill })] : []),
+          ...(track ? [dim(track)] : []),
+          Text({ bold: true, color, children: ` ${percent}%`.padStart(5) }),
+          ...hints.flatMap(h => [Text({ children: '  ' }), h]),
+        ],
+      })
+    }
+    const stale = (name: string) => Box({ flexDirection: 'row', children: [label(name), dim('reset?')] })
 
-    const hit = cachePercent(cache)
-    if (wide && hit !== null) parts.push(sep(), Text({ children: `cache ${hit}%` }))
-    if (wide && perRequest.length > 0) parts.push(sep(), Text({ children: `${sparkline(perRequest)} tok/req` }))
-
-    if (ctx !== undefined && ctx >= 80) {
-      parts.push(
-        sep(),
-        e.props.isWorking
-          ? Text({ color: 'red', children: 'ctx high' })
-          : Button({ key: 'compact', label: 'Compact', onPress: () => compact($) }),
-      )
+    const rows: RenderElement[] = []
+    if (memory !== undefined) {
+      const hints: RenderElement[] = []
+      if (memory >= 80) {
+        hints.push(Text({ color: 'red', children: '⚠ clear soon' }))
+        if (!e.props.isWorking) hints.push(Button({ key: 'compact', label: 'Compact', onPress: () => compact($) }))
+      } else if (memory >= MEMORY_WARN) {
+        hints.push(dim('clear when you switch tasks'))
+      }
+      rows.push(row('memory', memory, hints))
+    }
+    if (plan?.isPast) rows.push(stale('plan'))
+    else if (plan) {
+      const hints: RenderElement[] = []
+      if (plan.percent >= 90) hints.push(Text({ color: 'red', children: '⚠ near limit' }))
+      if (plan.resetAt !== null) hints.push(dim(`resets ${until(plan.resetAt, now)}`))
+      rows.push(row('plan', plan.percent, hints))
+    }
+    if (week?.isPast) rows.push(stale('week'))
+    else if (week) {
+      const isSoon = week.resetAt !== null && week.percent >= LIMIT_WARN
+      rows.push(row('week', week.percent, isSoon ? [dim(`resets ${resetDay(week.resetAt!, now)}`)] : []))
     }
 
-    return Box({
-      flexDirection: 'column',
-      children: [Box({ flexDirection: 'row', children: parts }), await next(e)],
-    })
+    return Box({ flexDirection: 'column', children: [...rows, await next(e)] })
   })
 
   on('ui.render', { component: 'Pane' }, async ($, e, next) => {
@@ -164,6 +179,7 @@ export function register(on: On) {
       children: [
         ...(ledgerFailure ? [Text({ color: 'red', children: `ledger write failed: ${ledgerFailure}` })] : []),
         Text({ bold: true, children: `Tokens per day, last ${CHART_DAYS} days (max ${short(Math.max(...daily))})` }),
+        Text({ dimColor: true, children: hit === null ? 'cache hits: no requests yet' : `cache hits ${hit}% (higher is better)` }),
         ...chart,
         Text({ dimColor: true, children: `${dayOf(now, CHART_DAYS - 1).slice(5)} … ${dayOf(now).slice(5)}` }),
         Box({
@@ -185,10 +201,25 @@ export function register(on: On) {
         ...section('Repos', picked.repos),
         ...section('Branches', picked.branches),
         ...section('Models', picked.models),
-        Text({ dimColor: true, children: `This session's cache hits: ${hit === null ? 'no requests yet' : `${hit}%`}` }),
       ],
     })
   })
+}
+
+function limitOf(limits: readonly SessionRateLimit[], kind: SessionRateLimit['kind'], now: number): Limit | null {
+  const l = limits.find(l => l.kind === kind && Number.isFinite(l.percentUsed))
+  if (!l) return null
+  const resetAt = Date.parse(l.resetsAt ?? '')
+  return { percent: Math.round(l.percentUsed), resetAt: Number.isFinite(resetAt) ? resetAt : null, isPast: resetAt <= now }
+}
+
+// A limit past its reset is stale, so it doesn't hold the band open.
+function isCalm(l: Limit | null): boolean {
+  return !l || l.isPast || l.percent < LIMIT_WARN
+}
+
+function resetDay(at: number, now: number): string {
+  return at - now < DAY ? until(at, now) : new Date(at).toLocaleDateString('en-US', { weekday: 'short' })
 }
 
 async function load($: EngineInterface, now: number): Promise<(Day | undefined)[]> {
