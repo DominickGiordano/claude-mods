@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import { BAND, complete, start, step, stepUsage, usageAt, world } from './world'
+import { BAND, HOUR, complete, measure, start, step, stepUsage, usageAt, world } from './world'
 
 async function band($: Engine, props = BAND) {
   const ui = await $.ui.mount({ plugin: 'meter', surface: 'terminal', component: 'AbovePrompt', props })
@@ -17,7 +17,7 @@ describe('band', () => {
     await step($)
     await step($)
     const { row } = await band($)
-    expect(row).toBe('ctx ▇▇▇▁▁ 61% 122k/200k · 5h 55% ↻1h12m · 7d 26% · $3.41 · cache 90% · ▁█ per req' + 'beneath')
+    expect(row).toBe('ctx ▇▇▇▁▁ 61% 122k/200k · 5h 55% ↻1h12m · 7d 26% · $3.41 · cache 90% · ▁█ tok/req' + 'beneath')
   })
 
   test('narrow row keeps context, 5h and cost', async ($, on) => {
@@ -27,14 +27,22 @@ describe('band', () => {
     expect(row).toBe('ctx 61% · 5h 55% · $3.41beneath')
   })
 
-  test('context and 5h figures turn yellow at 50% and red at 80%', async ($, on) => {
-    const w = world(on)
+  test('narrow row keeps 7d once it reaches 80%, colored like 5h', async ($, on) => {
+    world(on)
+    await start($)
+    const u = usageAt(61)
+    await measure($, { ...u, rateLimits: [u.rateLimits[0]!, { ...u.rateLimits[1]!, percentUsed: 84 }] })
+    const { row, texts } = await band($, { ...BAND, bodyColumns: 80 })
+    expect(row).toBe('ctx 61% · 5h 55% · 7d 84% · $3.41beneath')
+    expect(texts.find(t => t.text.startsWith('7d'))?.props.color).toBe('red')
+  })
+
+  test('measure pushes new figures; context and 5h turn yellow at 50% and red at 80%', async ($, on) => {
+    world(on)
     await start($)
     const colorAt = async (percent: number) => {
-      w.usage = usageAt(percent)
-      await complete($)
-      const { texts } = await band($)
-      return texts[0]?.props.color
+      await measure($, usageAt(percent))
+      return (await band($)).texts[0]?.props.color
     }
     expect(await colorAt(49)).toBe('green')
     expect(await colorAt(50)).toBe('yellow')
@@ -44,17 +52,20 @@ describe('band', () => {
     expect(texts.find(t => t.text.startsWith('5h'))?.props.color).toBe('yellow')
   })
 
-  test('at 80% an idle band offers Compact, a working one says compact soon', async ($, on) => {
+  test('at 80% an idle band offers Compact, a working one says ctx high', async ($, on) => {
     const w = world(on)
     w.usage = usageAt(85)
     await start($)
     const idle = await band($)
+    w.usage = usageAt(20)
     await idle.ui.press({ key: 'compact' })
     expect(w.compacts).toBe(1)
     expect(w.toasts).toEqual(['meter: compact skipped, stubbed'])
+    expect((await band($)).row, 'context re-read after compacting').toContain('ctx ▇▁▁▁▁ 20%')
 
+    await measure($, usageAt(85))
     const busy = await band($, { ...BAND, isWorking: true })
-    expect(busy.row).toContain('compact soon')
+    expect(busy.row).toContain('ctx high')
     expect(await busy.ui.find({ type: 'Button' })).toBeUndefined()
   })
 
@@ -62,18 +73,27 @@ describe('band', () => {
     world(on)
     await start($)
     const { ui, row } = await band($)
-    expect(row).not.toContain('compact')
+    expect(row).not.toContain('ctx high')
     expect(await ui.find({ type: 'Button' })).toBeUndefined()
   })
 
-  test('a failed usage read marks the figures stale', async ($, on) => {
+  test('a window past its reset time says reset? instead of a stale percent', async ($, on) => {
     const w = world(on)
     await start($)
-    w.usage = null
-    await complete($)
+    await w.clock.advance(2 * HOUR)
     const { row } = await band($)
-    expect(row).toContain('ctx ▇▇▇▁▁ 61%')
-    expect(row).toContain('usage read failed, figures stale')
+    expect(row).toContain('5h reset?')
+    expect(row).not.toContain('55%')
+  })
+
+  test('no rate limits and no context percent: no limit figures, ctx – rather than 0%', async ($, on) => {
+    world(on)
+    await start($)
+    const u = usageAt(61)
+    await measure($, { ...u, context: { window: 200_000 }, rateLimits: [] })
+    const { row, ui } = await band($)
+    expect(row).toBe('ctx – · $3.41beneath')
+    expect(await ui.find({ type: 'Button' })).toBeUndefined()
   })
 
   test('passes through untouched before any reading and under a survey', async ($, on) => {
@@ -81,8 +101,7 @@ describe('band', () => {
     w.usage = null
     await start($)
     expect((await band($)).row).toBe('beneath')
-    w.usage = usageAt(61)
-    await complete($)
+    await measure($, usageAt(61))
     expect((await band($, { ...BAND, hasSurvey: true })).row).toBe('beneath')
   })
 })

@@ -20,6 +20,17 @@ export function isExpired(key: string, now: number): boolean {
   return /^meter:\d{4}-\d{2}-\d{2}$/.test(key) && key < keyOf(now, KEEP_DAYS - 1)
 }
 
+function isBuckets(x: unknown): boolean {
+  return typeof x === 'object' && x !== null &&
+    Object.values(x).every(b => typeof b?.usd === 'number' && typeof b?.tokens === 'number')
+}
+
+export function isDay(x: unknown): x is Day {
+  if (typeof x !== 'object' || x === null) return false
+  const d = x as Partial<Day>
+  return isBuckets(d.repos) && isBuckets(d.branches) && isBuckets(d.models)
+}
+
 function bump(buckets: Record<string, Bucket>, name: string, entry: Entry): Record<string, Bucket> {
   const b = buckets[name] ?? { usd: 0, tokens: 0 }
   return { ...buckets, [name]: { usd: b.usd + entry.usd, tokens: b.tokens + entry.tokens } }

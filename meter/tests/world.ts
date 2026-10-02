@@ -41,11 +41,14 @@ export function world(on: On, now = 0, stored: Record<string, unknown> = {}) {
     gitRuns: 0,
     opened: [] as string[],
     toasts: [] as string[],
+    logs: [] as string[],
+    storeFails: false,
     clock: mock.clock(on, { now }),
   }
   // Own store stubs rather than mock.store: the test's engine has no $.store to read the ledger back with.
   on('store.get', (_$, e) => ({ value: w.store.get(e.key) }))
   on('store.set', (_$, e) => {
+    if (w.storeFails) return { deny: 'store full' }
     w.store.set(e.key, JSON.parse(JSON.stringify(e.value)))
     return { value: undefined }
   })
@@ -56,6 +59,7 @@ export function world(on: On, now = 0, stored: Record<string, unknown> = {}) {
   on('store.keys', () => ({ value: [...w.store.keys()] }))
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('session.end', (_$, e) => ({ sessionId: e.sessionId }))
+  on('session.measure', (_$, e) => ({ changed: e.changed }))
   on('session.usage', () => (w.usage ? { value: w.usage } : { deny: 'no reading' }))
   on('session.compact', () => {
     w.compacts++
@@ -77,6 +81,10 @@ export function world(on: On, now = 0, stored: Record<string, unknown> = {}) {
     return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn' as const, usage: w.steps.shift() ?? null }
   })
   on('turn.complete', (_$, e) => ({ text: e.answer }))
+  on('ui.log', (_$, e) => {
+    w.logs.push(e.text)
+    return { value: undefined }
+  })
   on('ui.toast', (_$, e) => {
     w.toasts.push(e.text)
     return { value: undefined }
@@ -98,4 +106,8 @@ export async function step($: Engine, turnId = 't1', agentId?: string) {
 
 export async function complete($: Engine, usage?: TurnUsage, turnId = 't1', agentId?: string) {
   return $.turn.complete({ answer: 'ok', durationMs: 1, isAborted: false, reason: 'answer', turnId, ...(usage && { usage }), ...(agentId && { agentId }) })
+}
+
+export async function measure($: Engine, u: SessionUsage) {
+  await $.session.measure({ context: u.context, rateLimits: u.rateLimits, ...(u.cost && { cost: u.cost }), changed: ['context', 'rateLimits', 'cost'] })
 }
