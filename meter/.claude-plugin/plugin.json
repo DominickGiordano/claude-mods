@@ -1,0 +1,8 @@
+{
+  "name": "meter",
+  "version": "0.0.0",
+  "description": "Context, rate limits, cost and cache hits above the prompt; /usage charts token spend by day, repo and branch.",
+  "author": {
+    "name": "Dominick Giordano"
+  }
+}

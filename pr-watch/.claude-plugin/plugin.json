@@ -1,0 +1,8 @@
+{
+  "name": "pr-watch",
+  "version": "0.0.0",
+  "description": "Watches the PRs Claude opens: a band row with CI and merge state, merge buttons, and a nudge when one merges.",
+  "author": {
+    "name": "Dominick Giordano"
+  }
+}

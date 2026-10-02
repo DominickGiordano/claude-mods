@@ -1,0 +1,8 @@
+{
+  "name": "fleet",
+  "version": "0.0.0",
+  "description": "/fleet shows every live Claude Code session on this machine, and /send messages one.",
+  "author": {
+    "name": "Dominick Giordano"
+  }
+}

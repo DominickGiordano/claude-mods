@@ -1,0 +1,8 @@
+{
+  "name": "quick",
+  "version": "0.0.0",
+  "description": "Instant commands that run without a Claude turn: /k, /also, /links, /copy, /status.",
+  "author": {
+    "name": "Dominick Giordano"
+  }
+}

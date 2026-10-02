@@ -1,0 +1,36 @@
+{
+  "name": "claude-mods",
+  "owner": {
+    "name": "Dominick Giordano"
+  },
+  "metadata": {
+    "description": "Dominick's Claude Code mods."
+  },
+  "plugins": [
+    {
+      "name": "pr-watch",
+      "source": "./pr-watch",
+      "description": "Watches the PRs Claude opens: a band row with CI and merge state, merge buttons, and a nudge when one merges."
+    },
+    {
+      "name": "meter",
+      "source": "./meter",
+      "description": "Context, rate limits, cost and cache hits above the prompt; /usage charts token spend by day, repo and branch."
+    },
+    {
+      "name": "fleet",
+      "source": "./fleet",
+      "description": "/fleet shows every live Claude Code session on this machine, and /send messages one."
+    },
+    {
+      "name": "quick",
+      "source": "./quick",
+      "description": "Instant commands that run without a Claude turn: /k, /also, /links, /copy, /status."
+    },
+    {
+      "name": "auth-guard",
+      "source": "./auth-guard",
+      "description": "Spots an expired CLI login in tool output and offers a Login button that signs in and retries."
+    }
+  ]
+}

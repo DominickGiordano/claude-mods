@@ -1,0 +1,8 @@
+{
+  "name": "auth-guard",
+  "version": "0.0.0",
+  "description": "Spots an expired CLI login in tool output and offers a Login button that signs in and retries.",
+  "author": {
+    "name": "Dominick Giordano"
+  }
+}
