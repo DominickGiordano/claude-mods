@@ -13,6 +13,24 @@
       "description": "When a watched PR merges and Claude is idle, send Claude one prompt saying so.",
       "required": false,
       "default": true
+    },
+    "mergeBases": {
+      "type": "string",
+      "multiple": true,
+      "title": "Mergeable bases",
+      "description": "Base branches the Merge buttons may merge into. PRs into any other base get no buttons.",
+      "required": false,
+      "default": [
+        "develop"
+      ]
+    },
+    "hosts": {
+      "type": "string",
+      "multiple": true,
+      "title": "Extra GitHub hosts",
+      "description": "GitHub Enterprise hosts whose PR URLs are watched, besides github.com.",
+      "required": false,
+      "default": []
     }
   }
 }
