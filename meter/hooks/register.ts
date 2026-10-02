@@ -1,6 +1,6 @@
 import type { EngineInterface, On, RenderElement, SessionRateLimit, SessionUsage } from 'claude-code'
 
-import { barRows, cachePercent, gauge, levelColor, short, sparkline, totalTokens, until, usd } from './format'
+import { barRows, cachePercent, gauge, levelColor, short, sparkline, totalTokens, until } from './format'
 import type { CacheTotals } from './format'
 import { KEEP_DAYS, addTo, dayOf, isDay, isExpired, keyOf, merge, top, total } from './ledger'
 import type { Bucket, Day, Entry } from './ledger'
@@ -12,16 +12,13 @@ const CHART_ROWS = 6
 const TOP = 5
 const RANGES = [1, 7, 30] as const
 
-type Figures = Pick<SessionUsage, 'context' | 'rateLimits' | 'cost'>
+type Figures = Pick<SessionUsage, 'context' | 'rateLimits'>
 
 let figures: Figures | null = null
 let perRequest: number[] = []
 const cache: CacheTotals = { read: 0, written: 0, uncached: 0 }
 const turn = { isRunning: false, tokens: 0 }
 let mainTurnId = ''
-// The session cost last read; null until a reading is in hand, and nothing is booked before one.
-let lastUsd: number | null = null
-let pendingUsd = 0
 const git = { turnId: '', branch: '' }
 let range: (typeof RANGES)[number] = 7
 let days: (Day | undefined)[] | null = null
@@ -32,27 +29,26 @@ export function register(on: On) {
   on('session.start', async ($, e, next) => {
     const result = await next(e)
     await seed($)
-    await $.command.register({ name: 'spend', description: 'Token spend by day, repo, branch and model' })
+    await $.command.register({ name: 'tokens', description: 'Token usage by day, repo, branch and model' })
     return result
   })
 
-  on('command.run', { command: 'spend' }, async ($, e) => {
+  on('command.run', { command: 'tokens' }, async ($, e) => {
     days = null
-    await $.ui.open({ id: 'spend', title: 'Spend', focus: true, closeOnEscape: true })
+    await $.ui.open({ id: 'tokens', title: 'Tokens', focus: true, closeOnEscape: true })
     return {}
   })
 
   // session.start doesn't fire again after /clear or /resume, so the next turn.start re-seeds.
   on('session.end', { reason: ['clear', 'resume'] }, async ($, e, next) => {
     figures = null
-    lastUsd = null
     perRequest = []
     cache.read = cache.written = cache.uncached = 0
     return next(e)
   })
 
   on('turn.start', async ($, e, next) => {
-    if (lastUsd === null) await seed($)
+    if (!figures) await seed($)
     turn.isRunning = true
     turn.tokens = 0
     mainTurnId = e.turnId
@@ -75,22 +71,13 @@ export function register(on: On) {
   on('turn.complete', async ($, e, next) => {
     const result = await next(e)
     if (!e.agentId) turn.isRunning = false
-    if (!e.usage && pendingUsd === 0) return result
-    const usd = pendingUsd
-    pendingUsd = 0
-    await book($, { model: e.usage?.model ?? 'unknown', usd, tokens: e.usage ? totalTokens(e.usage) : 0 })
+    if (e.usage) await book($, { model: e.usage.model, tokens: totalTokens(e.usage) })
     return result
   })
 
-  // Cost comes only as a session total, measured before the main turn's turn.complete (seen live).
-  // Its growth waits for the next completing turn, so a subagent's cost can land on its parent's.
   on('session.measure', async ($, e, next) => {
-    figures = { context: e.context, rateLimits: e.rateLimits, cost: e.cost }
+    figures = { context: e.context, rateLimits: e.rateLimits }
     $.ui.invalidate('ui.render')
-    if (e.cost) {
-      if (lastUsd !== null) pendingUsd += Math.max(0, e.cost.usd - lastUsd)
-      lastUsd = e.cost.usd
-    }
     return next(e)
   })
 
@@ -113,7 +100,7 @@ export function register(on: On) {
       return Text({ color: levelColor(l.percentUsed), children: `${label} ${Math.round(l.percentUsed)}%${reset}` })
     }
 
-    const { context, rateLimits, cost } = figures
+    const { context, rateLimits } = figures
     const ctx = context.percent
     const parts: RenderElement[] = [
       ctx === undefined
@@ -127,7 +114,6 @@ export function register(on: On) {
     if (five) parts.push(sep(), limit('5h', five, wide))
     const seven = rateLimits.find(l => l.kind === 'seven_day' && Number.isFinite(l.percentUsed))
     if (seven && (wide || seven.percentUsed >= 80)) parts.push(sep(), limit('7d', seven, false))
-    if (cost) parts.push(sep(), Text({ children: usd(cost.usd) }))
 
     const hit = cachePercent(cache)
     if (wide && hit !== null) parts.push(sep(), Text({ children: `cache ${hit}%` }))
@@ -149,26 +135,24 @@ export function register(on: On) {
   })
 
   on('ui.render', { component: 'Pane' }, async ($, e, next) => {
-    if (e.requestId !== 'spend') return next(e)
+    if (e.requestId !== 'tokens') return next(e)
     const { Box, Text, Button } = $.ui.resolve(e)
     const now = await $.clock.now()
     days ??= await load($, now)
 
     const recent = days.slice(0, CHART_DAYS)
-    const daily = recent.map(d => total(d?.repos ?? {}).usd).reverse()
+    const daily = recent.map(d => total(d?.repos ?? {})).reverse()
     const chart = recent.some(d => d)
       ? barRows(daily, CHART_ROWS).map(l => Text({ color: 'cyan', children: l }))
-      : [Text({ dimColor: true, children: `No spend recorded in the last ${CHART_DAYS} days.` })]
+      : [Text({ dimColor: true, children: `No tokens recorded in the last ${CHART_DAYS} days.` })]
 
     const picked = merge(days.slice(0, range))
-    const sum = total(picked.repos)
-    // Totals are exact; their split across repos, branches and models is approximate (see session.measure).
     const section = (title: string, buckets: Record<string, Bucket>) => {
       const more = Object.keys(buckets).length - TOP
       return [
         Text({ bold: true, children: title }),
         ...top(buckets, TOP).map(([name, b]) =>
-          Text({ wrap: 'truncate-end', children: `  ${`≈${usd(b.usd)}`.padStart(9)}  ${short(b.tokens).padStart(6)} tok  ${name}` }),
+          Text({ wrap: 'truncate-end', children: `  ${short(b.tokens).padStart(6)} tok  ${name}` }),
         ),
         ...(more > 0 ? [Text({ dimColor: true, children: `  +${more} more` })] : []),
       ]
@@ -179,7 +163,7 @@ export function register(on: On) {
       flexDirection: 'column',
       children: [
         ...(ledgerFailure ? [Text({ color: 'red', children: `ledger write failed: ${ledgerFailure}` })] : []),
-        Text({ bold: true, children: `Cost per day, last ${CHART_DAYS} days (max ${usd(Math.max(...daily))})` }),
+        Text({ bold: true, children: `Tokens per day, last ${CHART_DAYS} days (max ${short(Math.max(...daily))})` }),
         ...chart,
         Text({ dimColor: true, children: `${dayOf(now, CHART_DAYS - 1).slice(5)} … ${dayOf(now).slice(5)}` }),
         Box({
@@ -197,7 +181,7 @@ export function register(on: On) {
             }),
           ),
         }),
-        Text({ children: `${range}d total ${usd(sum.usd)} · ${short(sum.tokens)} tok` }),
+        Text({ children: `${range}d total ${short(total(picked.repos))} tok` }),
         ...section('Repos', picked.repos),
         ...section('Branches', picked.branches),
         ...section('Models', picked.models),
@@ -217,7 +201,7 @@ async function load($: EngineInterface, now: number): Promise<(Day | undefined)[
 }
 
 // Serialized because interleaved read-modify-writes in this process drop a booking. Across sessions
-// $.store has no lock, so that race remains, rare and tolerated for a spend estimate.
+// $.store has no lock, so that race remains, rare and tolerated for a usage tally.
 function book($: EngineInterface, part: Omit<Entry, 'repo' | 'branch'>): Promise<void> {
   writes = writes.then(() => write($, part))
   return writes
@@ -256,7 +240,6 @@ async function branchOf($: EngineInterface): Promise<string> {
 async function seed($: EngineInterface) {
   try {
     figures = await $.session.usage()
-    lastUsd = figures.cost?.usd ?? null
   } catch (err) {
     $.ui.log(`meter: usage read failed, waiting for the next measure: ${String(err)}`, { to: 'debug' })
   }

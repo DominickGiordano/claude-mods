@@ -21,7 +21,6 @@ export function usageAt(percent: number, now = 0): SessionUsage {
       { kind: 'five_hour', percentUsed: 55, resetsAt: new Date(now + HOUR + 12 * 60_000).toISOString() },
       { kind: 'seven_day', percentUsed: 26, resetsAt: new Date(now + 90 * HOUR).toISOString() },
     ],
-    cost: { usd: 3.41 },
   }
 }
 
@@ -109,5 +108,5 @@ export async function complete($: Engine, usage?: TurnUsage, turnId = 't1', agen
 }
 
 export async function measure($: Engine, u: SessionUsage) {
-  await $.session.measure({ context: u.context, rateLimits: u.rateLimits, ...(u.cost && { cost: u.cost }), changed: ['context', 'rateLimits', 'cost'] })
+  await $.session.measure({ context: u.context, rateLimits: u.rateLimits, changed: ['context', 'rateLimits'] })
 }

@@ -8,10 +8,6 @@ export function short(n: number): string {
   return String(Math.round(n))
 }
 
-export function usd(n: number): string {
-  return `$${n.toFixed(2)}`
-}
-
 export function levelColor(percent: number): string {
   if (percent >= 80) return 'red'
   if (percent >= 50) return 'yellow'
@@ -51,7 +47,7 @@ export function cachePercent(c: CacheTotals): number | null {
 const EIGHTHS = ' ▁▂▃▄▅▆▇█'
 
 // Rows top to bottom, bars two cells wide with one between, in eighth-cell steps.
-// A nonzero day gets at least one eighth so it never draws as no spend.
+// A nonzero day gets at least one eighth so it never draws as an empty day.
 export function barRows(values: readonly number[], rows: number): string[] {
   const top = Math.max(...values)
   const heights = values.map(v => (v > 0 ? Math.max(1, Math.round((v / top) * rows * 8)) : 0))

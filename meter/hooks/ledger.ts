@@ -1,6 +1,6 @@
-export type Bucket = { usd: number; tokens: number }
+export type Bucket = { tokens: number }
 export type Day = { repos: Record<string, Bucket>; branches: Record<string, Bucket>; models: Record<string, Bucket> }
-export type Entry = { repo: string; branch: string; model: string; usd: number; tokens: number }
+export type Entry = { repo: string; branch: string; model: string; tokens: number }
 
 export const KEEP_DAYS = 30
 const PREFIX = 'meter:'
@@ -20,9 +20,9 @@ export function isExpired(key: string, now: number): boolean {
   return /^meter:\d{4}-\d{2}-\d{2}$/.test(key) && key < keyOf(now, KEEP_DAYS - 1)
 }
 
+// Days written before 0.2.0 also carry a `usd` per bucket; it is ignored, never shown.
 function isBuckets(x: unknown): boolean {
-  return typeof x === 'object' && x !== null &&
-    Object.values(x).every(b => typeof b?.usd === 'number' && typeof b?.tokens === 'number')
+  return typeof x === 'object' && x !== null && Object.values(x).every(b => typeof b?.tokens === 'number')
 }
 
 export function isDay(x: unknown): x is Day {
@@ -32,8 +32,7 @@ export function isDay(x: unknown): x is Day {
 }
 
 function bump(buckets: Record<string, Bucket>, name: string, entry: Entry): Record<string, Bucket> {
-  const b = buckets[name] ?? { usd: 0, tokens: 0 }
-  return { ...buckets, [name]: { usd: b.usd + entry.usd, tokens: b.tokens + entry.tokens } }
+  return { ...buckets, [name]: { tokens: (buckets[name]?.tokens ?? 0) + entry.tokens } }
 }
 
 export function addTo(day: Day | undefined, entry: Entry): Day {
@@ -47,9 +46,7 @@ export function addTo(day: Day | undefined, entry: Entry): Day {
 
 function sum(into: Record<string, Bucket>, from: Record<string, Bucket>) {
   for (const [name, b] of Object.entries(from)) {
-    const t = (into[name] ??= { usd: 0, tokens: 0 })
-    t.usd += b.usd
-    t.tokens += b.tokens
+    into[name] = { tokens: (into[name]?.tokens ?? 0) + b.tokens }
   }
 }
 
@@ -64,12 +61,12 @@ export function merge(days: readonly (Day | undefined)[]): Day {
   return all
 }
 
-export function total(buckets: Record<string, Bucket>): Bucket {
-  return Object.values(buckets).reduce((t, b) => ({ usd: t.usd + b.usd, tokens: t.tokens + b.tokens }), { usd: 0, tokens: 0 })
+export function total(buckets: Record<string, Bucket>): number {
+  return Object.values(buckets).reduce((t, b) => t + b.tokens, 0)
 }
 
 export function top(buckets: Record<string, Bucket>, n = 5): [string, Bucket][] {
   return Object.entries(buckets)
-    .sort(([, a], [, b]) => b.usd - a.usd)
+    .sort(([, a], [, b]) => b.tokens - a.tokens)
     .slice(0, n)
 }

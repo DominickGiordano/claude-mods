@@ -10,21 +10,22 @@ async function band($: Engine, props = BAND) {
 }
 
 describe('band', () => {
-  test('wide row shows every figure, cache hits and the per-request sparkline', async ($, on) => {
+  test('wide row shows every figure, cache hits and the per-request sparkline, never cost', async ($, on) => {
     const w = world(on)
+    w.usage = { ...usageAt(61), cost: { usd: 70 } }
     w.steps = [stepUsage(100, 0, 900, 50), stepUsage(50, 9000, 0, 400)]
     await start($)
     await step($)
     await step($)
     const { row } = await band($)
-    expect(row).toBe('ctx ▇▇▇▁▁ 61% 122k/200k · 5h 55% ↻1h12m · 7d 26% · $3.41 · cache 90% · ▁█ tok/req' + 'beneath')
+    expect(row).toBe('ctx ▇▇▇▁▁ 61% 122k/200k · 5h 55% ↻1h12m · 7d 26% · cache 90% · ▁█ tok/req' + 'beneath')
   })
 
-  test('narrow row keeps context, 5h and cost', async ($, on) => {
+  test('narrow row keeps context and 5h', async ($, on) => {
     world(on)
     await start($)
     const { row } = await band($, { ...BAND, bodyColumns: 80 })
-    expect(row).toBe('ctx 61% · 5h 55% · $3.41beneath')
+    expect(row).toBe('ctx 61% · 5h 55%beneath')
   })
 
   test('narrow row keeps 7d once it reaches 80%, colored like 5h', async ($, on) => {
@@ -33,7 +34,7 @@ describe('band', () => {
     const u = usageAt(61)
     await measure($, { ...u, rateLimits: [u.rateLimits[0]!, { ...u.rateLimits[1]!, percentUsed: 84 }] })
     const { row, texts } = await band($, { ...BAND, bodyColumns: 80 })
-    expect(row).toBe('ctx 61% · 5h 55% · 7d 84% · $3.41beneath')
+    expect(row).toBe('ctx 61% · 5h 55% · 7d 84%beneath')
     expect(texts.find(t => t.text.startsWith('7d'))?.props.color).toBe('red')
   })
 
@@ -92,7 +93,7 @@ describe('band', () => {
     const u = usageAt(61)
     await measure($, { ...u, context: { window: 200_000 }, rateLimits: [] })
     const { row, ui } = await band($)
-    expect(row).toBe('ctx – · $3.41beneath')
+    expect(row).toBe('ctx –beneath')
     expect(await ui.find({ type: 'Button' })).toBeUndefined()
   })
 
