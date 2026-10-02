@@ -1,6 +1,6 @@
 # fleet
 
-Every live Claude Code session on this machine, in one pane.
+Every live interactive Claude Code session sharing this Claude config dir, in one pane.
 
 - `/fleet` lists sessions grouped waiting, working, idle: repo, branch, context %, time in state,
   last prompt. `*` marks this session. Two sessions in the same checkout turn red.
@@ -12,7 +12,9 @@ Every live Claude Code session on this machine, in one pane.
 ## How it works
 
 Each session writes its own `$.store` key every 15 s and on every state change; readers drop
-entries older than 60 s and delete ones older than 10 minutes. A session that exits removes its key.
+entries older than 60 s, show ones silent past 30 s as "last seen", and delete ones older than
+10 minutes. A session that exits removes its key. Headless runs (`-p`, the SDK) write nothing but
+can still `/send`. If the store cannot be read, the pane says so and keeps the last rows as stale.
 
 `/send` uses `$.session.send`: the message is queued at the other session as a cross-session
 message from the `fleet` plugin, and the model there reads it (mid-turn, inside the running turn).
